@@ -1,0 +1,7 @@
+{
+  "id": "security_manager",
+  "version": "0.1.0",
+  "capabilities": ["authz", "audit"],
+  "required_scopes": [],
+  "dependencies": []
+}
