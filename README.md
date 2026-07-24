@@ -55,3 +55,32 @@ docs/adr/        Architecture Decision Records
 Memory Engine (episodic + profile, SQLite) and a CLI-based interaction
 mode — still no voice yet, per the "narrow useful slice first" principle
 in the master SAD's design philosophy.
+
+# S.E.N.T.I.N.E.L.
+
+Smart Executive Neural Technology for Intelligent Navigation, Evaluation & Learning
+
+## Overview
+
+S.E.N.T.I.N.E.L. is a modular AI Operating System designed as a long-term engineering project.
+
+## Current Version
+
+v0.1.0 – Kernel Foundation
+
+## Features
+
+- Modular Kernel
+- Event Bus
+- Security Manager
+- Module Registry
+- Audit Logging
+- Unit Tests
+
+## Roadmap
+
+- v0.2 Configuration Manager
+- v0.3 Plugin Loader
+- v0.4 Memory Engine
+- v0.5 Voice Interface
+- ...

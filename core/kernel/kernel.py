@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import logging
 
+from core.config_manager.src.config_manager import ConfigurationManager
 from core.event_bus.event_bus import AsyncEventBus
 from core.module_registry.registry import ModuleRegistry
 from domain.entities.event import Event
@@ -35,23 +36,62 @@ class _KernelContextImpl(KernelContext):
 
 
 class Kernel:
-    def __init__(self, security: SecurityPort) -> None:
-        self.event_bus = AsyncEventBus()
+    def __init__(
+        self,
+        security: SecurityPort,
+        config: ConfigurationManager | None = None,
+    ) -> None:
+        """
+        Kernel boot sequence.
+
+        Boot order:
+            1. Event Bus
+            2. Security Manager
+            3. Kernel Context
+            4. Module Registry
+        """
         self.security = security
-        self.context = _KernelContextImpl(self.event_bus, self.security)
-        self.registry = ModuleRegistry(self.security, self.context)
+        self.config = config
+
+        # Read queue size from configuration
+        queue_size = 1000
+        if self.config is not None:
+            queue_size = self.config.get_int(
+                "event_bus.queue_size",
+                1000,
+            )
+
+        # Core services
+        self.event_bus = AsyncEventBus(queue_size=queue_size)
+        self.context = _KernelContextImpl(
+            self.event_bus,
+            self.security,
+        )
+        self.registry = ModuleRegistry(
+            self.security,
+            self.context,
+        )
 
     async def start(self) -> None:
         logger.info("kernel starting")
+
         await self.event_bus.start()
+
         await self.event_bus.publish(
-            Event(type="system.kernel.started", source="core")
+            Event(
+                type="system.kernel.started",
+                source="core",
+            )
         )
+
         logger.info("kernel started")
 
     async def stop(self) -> None:
         logger.info("kernel stopping")
+
         for module_id in list(self.registry.all_manifests().keys()):
             await self.registry.unload(module_id)
+
         await self.event_bus.stop()
+
         logger.info("kernel stopped")

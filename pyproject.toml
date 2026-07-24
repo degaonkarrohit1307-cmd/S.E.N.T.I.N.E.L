@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sentinel"
+version = "0.1.1"
+description = "S.E.N.T.I.N.E.L. -- Personal AI Operating System (kernel foundation)"
+requires-python = ">=3.11"
+
+[tool.setuptools]
+packages = ["core", "domain", "modules"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+# v0.1.1 fix: explicitly add the project root to sys.path for test
+# collection, rather than relying on pytest's implicit rootdir-insertion
+# behavior -- that behavior differs between `pytest` and `python -m
+# pytest` invocations, which is exactly what caused finding #1 in the
+# v0.1.1 review (bare `pytest` failed with ModuleNotFoundError while
+# `python -m pytest` passed).
+pythonpath = ["."]

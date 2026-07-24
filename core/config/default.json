@@ -1,0 +1,9 @@
+{
+  "event_bus": {
+    "queue_size": 1000
+  },
+  "security": {
+    "granted_scopes_path": "core/config/granted_scopes.json",
+    "audit_log_path": "core/config/audit.log"
+  }
+}

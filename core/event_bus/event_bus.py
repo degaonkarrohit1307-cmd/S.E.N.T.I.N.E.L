@@ -22,7 +22,6 @@ from domain.ports.system_ports import EventBusPort, EventHandler
 
 logger = logging.getLogger("sentinel.event_bus")
 
-_QUEUE_MAXSIZE_NORMAL = 1000
 _MAX_CONSECUTIVE_FAILURES = 3
 
 
@@ -45,13 +44,13 @@ class _CircuitBreaker:
 
 
 class AsyncEventBus(EventBusPort):
-    def __init__(self) -> None:
+    def __init__(self, queue_size: int = 1000) -> None:
         self._subscribers: dict[str, list[EventHandler]] = defaultdict(list)
         self._breakers: dict[int, _CircuitBreaker] = {}
         self._queues: dict[Priority, asyncio.Queue] = {
             Priority.CRITICAL: asyncio.Queue(),
             Priority.HIGH: asyncio.Queue(),
-            Priority.NORMAL: asyncio.Queue(maxsize=_QUEUE_MAXSIZE_NORMAL),
+            Priority.NORMAL: asyncio.Queue(maxsize=queue_size),
         }
         self._dead_letters: list[Event] = []
         self._workers: list[asyncio.Task] = []
@@ -116,10 +115,12 @@ class AsyncEventBus(EventBusPort):
         handlers = list(self._subscribers.get(event.type, []))
         if not handlers:
             return
+
         for handler in handlers:
             breaker = self._breakers.get(id(handler))
             if breaker and breaker.tripped:
                 continue
+
             try:
                 await handler(event)
                 if breaker:
@@ -144,8 +145,10 @@ class AsyncEventBus(EventBusPort):
                             priority=Priority.HIGH,
                         )
                     )
+
                 if not event.requires_ack:
                     continue
+
                 self._dead_letters.append(event)
 
     def dead_letters(self) -> list[Event]:

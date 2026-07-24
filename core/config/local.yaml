@@ -1,0 +1,6 @@
+# Optional local overrides -- merged with higher precedence than
+# default.json, lower precedence than SENTINEL_* environment variables.
+# This file is intentionally near-empty; uncomment/add keys as needed.
+#
+# event_bus:
+#   queue_size: 2000
