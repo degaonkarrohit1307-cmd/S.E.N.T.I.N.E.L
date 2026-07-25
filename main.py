@@ -16,6 +16,12 @@ import asyncio
 import logging
 from pathlib import Path
 
+from core.config_manager.src.config_manager import ConfigurationManager
+from core.config_manager.src.sources import (
+    EnvVarConfigSource,
+    JsonFileConfigSource,
+    YamlFileConfigSource,
+)
 from core.kernel.kernel import Kernel
 from domain.entities.event import Event
 from modules.demo_echo.src.demo_echo import DemoEchoModule
@@ -24,16 +30,27 @@ from modules.security_manager.src.security_manager import SecurityManager
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
 
 ROOT = Path(__file__).parent
-GRANTED_SCOPES = ROOT / "core" / "config" / "granted_scopes.json"
-AUDIT_LOG = ROOT / "core" / "config" / "audit.log"
 
 
 async def main() -> None:
-    security = SecurityManager(
-        granted_scopes_path=GRANTED_SCOPES,
-        audit_log_path=AUDIT_LOG,
+    # Precedence, lowest to highest: default.json -> local.yaml -> env vars
+    config = ConfigurationManager(
+        sources=[
+            JsonFileConfigSource(ROOT / "core" / "config" / "default.json"),
+            YamlFileConfigSource(ROOT / "core" / "config" / "local.yaml"),
+            EnvVarConfigSource(),
+        ]
     )
-    kernel = Kernel(security=security)
+
+    security = SecurityManager(
+        granted_scopes_path=ROOT / config.get_str(
+            "security.granted_scopes_path", "core/config/granted_scopes.json"
+        ),
+        audit_log_path=ROOT / config.get_str(
+            "security.audit_log_path", "core/config/audit.log"
+        ),
+    )
+    kernel = Kernel(security=security, config=config)
     await kernel.start()
 
     demo = DemoEchoModule()
@@ -58,8 +75,9 @@ async def main() -> None:
 
     await kernel.stop()
 
-    print(f"\naudit log written to: {AUDIT_LOG}")
+    print(f"\naudit log written to: {security._audit_log_path}")
     print(f"replies received: {len(replies)}")
+    print(f"config loaded (event_bus.queue_size={config.get_int('event_bus.queue_size')})")
 
 
 if __name__ == "__main__":

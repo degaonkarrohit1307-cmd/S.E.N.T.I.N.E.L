@@ -1,25 +1,9 @@
-# Virtual Environment
-.venv/
-
-# Python cache
 __pycache__/
-*.py[cod]
-*.pyo
-
-# Test cache
+*.pyc
 .pytest_cache/
-
-# IDE
-.vscode/
-.idea/
-
-# Logs
-*.log
-*.tmp
-
-# Environment variables
+.venv/
+venv/
+*.egg-info/
+core/config/audit.log
+core/config/*.local.json
 .env
-
-# OS files
-Thumbs.db
-.DS_Store

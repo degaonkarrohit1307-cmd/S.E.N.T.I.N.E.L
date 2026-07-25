@@ -1,0 +1,10 @@
+{
+  "name": "weather",
+  "version": "1.0.0",
+  "author": "S.E.N.T.I.N.E.L. Project",
+  "description": "Demo plugin proving Phase 1 discovery works against the real modules/ directory, alongside existing Module Registry folders.",
+  "entry_point": "plugin:WeatherPlugin",
+  "dependencies": [],
+  "permissions": ["network.http"],
+  "enabled": true
+}

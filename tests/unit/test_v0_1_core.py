@@ -84,6 +84,30 @@ async def test_critical_priority_has_its_own_lane():
     assert "critical.evt" in order
 
 
+@pytest.mark.asyncio
+async def test_dead_letter_recorded_once_per_event_not_per_handler():
+    """v0.1.1 regression test: an event with multiple failing handlers
+    must appear in the dead-letter queue exactly once, not once per
+    failing handler (see review finding #3)."""
+    bus = AsyncEventBus()
+    await bus.start()
+
+    async def failing_handler_a(event: Event) -> None:
+        raise RuntimeError("a")
+
+    async def failing_handler_b(event: Event) -> None:
+        raise RuntimeError("b")
+
+    bus.subscribe("test.dlq", failing_handler_a)
+    bus.subscribe("test.dlq", failing_handler_b)
+
+    await bus.publish(Event(type="test.dlq", source="test", requires_ack=True))
+    await asyncio.sleep(0.1)
+    await bus.stop()
+
+    assert len(bus.dead_letters()) == 1
+
+
 # ---------------------------------------------------------------------------
 # Security Manager
 # ---------------------------------------------------------------------------

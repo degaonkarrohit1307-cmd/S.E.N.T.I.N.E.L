@@ -22,6 +22,7 @@ from domain.ports.system_ports import EventBusPort, EventHandler
 
 logger = logging.getLogger("sentinel.event_bus")
 
+_QUEUE_MAXSIZE_NORMAL = 1000
 _MAX_CONSECUTIVE_FAILURES = 3
 
 
@@ -43,14 +44,33 @@ class _CircuitBreaker:
         return False
 
 
+class _Subscription:
+    """Pairs a handler with its own circuit breaker as a single owned
+    object, rather than keying a side-table by id(handler) (v0.1.1 fix:
+    id() is only unique for an object's lifetime and can be silently
+    reused after garbage collection -- see ADR-0002)."""
+
+    __slots__ = ("handler", "breaker")
+
+    def __init__(self, handler: EventHandler) -> None:
+        self.handler = handler
+        self.breaker = _CircuitBreaker()
+
+
 class AsyncEventBus(EventBusPort):
-    def __init__(self, queue_size: int = 1000) -> None:
-        self._subscribers: dict[str, list[EventHandler]] = defaultdict(list)
-        self._breakers: dict[int, _CircuitBreaker] = {}
+    def __init__(self, normal_queue_maxsize: int = _QUEUE_MAXSIZE_NORMAL) -> None:
+        """
+        `normal_queue_maxsize` defaults to the original hardcoded constant,
+        so existing callers (`AsyncEventBus()`) are unaffected. v0.2 wires
+        this from the Configuration Manager's `event_bus.queue_size` key
+        via the Kernel; nothing about this constructor's default behavior
+        changed.
+        """
+        self._subscribers: dict[str, list[_Subscription]] = defaultdict(list)
         self._queues: dict[Priority, asyncio.Queue] = {
             Priority.CRITICAL: asyncio.Queue(),
             Priority.HIGH: asyncio.Queue(),
-            Priority.NORMAL: asyncio.Queue(maxsize=queue_size),
+            Priority.NORMAL: asyncio.Queue(maxsize=normal_queue_maxsize),
         }
         self._dead_letters: list[Event] = []
         self._workers: list[asyncio.Task] = []
@@ -68,14 +88,11 @@ class AsyncEventBus(EventBusPort):
         await queue.put(event)
 
     def subscribe(self, event_type: str, handler: EventHandler) -> None:
-        self._subscribers[event_type].append(handler)
-        self._breakers[id(handler)] = _CircuitBreaker()
+        self._subscribers[event_type].append(_Subscription(handler))
 
     def unsubscribe(self, event_type: str, handler: EventHandler) -> None:
-        handlers = self._subscribers.get(event_type, [])
-        if handler in handlers:
-            handlers.remove(handler)
-        self._breakers.pop(id(handler), None)
+        subs = self._subscribers.get(event_type, [])
+        self._subscribers[event_type] = [s for s in subs if s.handler != handler]
 
     async def start(self) -> None:
         if self._running:
@@ -112,26 +129,27 @@ class AsyncEventBus(EventBusPort):
             await self._dispatch(event)
 
     async def _dispatch(self, event: Event) -> None:
-        handlers = list(self._subscribers.get(event.type, []))
-        if not handlers:
+        subs = list(self._subscribers.get(event.type, []))
+        if not subs:
             return
-
-        for handler in handlers:
-            breaker = self._breakers.get(id(handler))
-            if breaker and breaker.tripped:
+        # v0.1.1 fix: an event is appended to the dead-letter queue at
+        # most once per dispatch, regardless of how many handlers fail on
+        # it (previously duplicated once per failing handler).
+        any_handler_failed = False
+        for sub in subs:
+            if sub.breaker.tripped:
                 continue
-
             try:
-                await handler(event)
-                if breaker:
-                    breaker.record_success()
+                await sub.handler(event)
+                sub.breaker.record_success()
             except Exception:  # noqa: BLE001 -- isolate handler faults
+                any_handler_failed = True
                 logger.exception(
                     "handler failed for event_type=%s event_id=%s",
                     event.type,
                     event.event_id,
                 )
-                if breaker and breaker.record_failure():
+                if sub.breaker.record_failure():
                     logger.error(
                         "circuit breaker tripped for a handler of %s "
                         "-- disabling it, emitting system.module.error",
@@ -145,11 +163,8 @@ class AsyncEventBus(EventBusPort):
                             priority=Priority.HIGH,
                         )
                     )
-
-                if not event.requires_ack:
-                    continue
-
-                self._dead_letters.append(event)
+        if event.requires_ack and any_handler_failed:
+            self._dead_letters.append(event)
 
     def dead_letters(self) -> list[Event]:
         """Exposed for the Logs/Diagnostics UI (SAD Part 3.6, 7.3)."""

@@ -25,25 +25,33 @@ Security Manager skeleton.**
 
 ## Run it
 ```bash
-pip install pytest pytest-asyncio
+pip install -r requirements.txt
 python main.py
 ```
-Expected output: an echoed reply event, plus a line confirming the audit
-log was written to `core/config/audit.log`.
+Expected output: an echoed reply event, the audit log path, and the
+active `event_bus.queue_size` (proving config was loaded).
+
+Try an override:
+```bash
+SENTINEL_EVENT_BUS__QUEUE_SIZE=42 python main.py
+```
+The printed queue size changes from `1000` to `42` — env vars win over
+`core/config/default.json`.
 
 ## Test it
 ```bash
 pytest tests/unit/ -v
 ```
-7 tests covering: event delivery, circuit-breaker tripping, priority-lane
-isolation, and all three security authorization paths (undeclared scope
-denied, declared-but-ungranted denied, declared-and-granted allowed).
+27 tests: 8 for the kernel/event-bus/security foundation (v0.1/v0.1.1),
+19 for the Configuration Manager (v0.2) covering JSON/YAML loading,
+missing/invalid files, defaults, env-var precedence, runtime overrides,
+schema validation, and Kernel integration.
 
 ## Folder map
 ```
-core/            Kernel, Event Bus, Module Registry, config
-domain/          Framework-free entities (Event, ModuleManifest) and
-                 ports (interfaces) — Clean Architecture's innermost layer
+core/            Kernel, Event Bus, Module Registry, Config Manager, config files
+domain/          Framework-free entities (Event, ModuleManifest, ConfigSchema)
+                 and ports (interfaces) — Clean Architecture's innermost layer
 modules/
   security_manager/   The security module itself
   demo_echo/           Minimal module proving the pipeline works
@@ -51,36 +59,18 @@ tests/unit/      pytest suite
 docs/adr/        Architecture Decision Records
 ```
 
-## Next up (v0.2, per the roadmap)
-Memory Engine (episodic + profile, SQLite) and a CLI-based interaction
-mode — still no voice yet, per the "narrow useful slice first" principle
-in the master SAD's design philosophy.
+## Version history
+- **v0.1.0** — Core Kernel, Event Bus, Module Registry, Security Manager
+  skeleton, demo_echo, 7 tests.
+- **v0.1.1** — Review-only patch: fixed invocation-dependent import
+  failure, an `id(handler)` reuse hazard in the circuit breaker, and a
+  dead-letter duplication bug. 8 tests, no API changes. See
+  `docs/adr/0002-v0.1.1-review-fixes.md`.
+- **v0.2.0** — Configuration Manager: JSON/YAML/env loading, precedence
+  merging, schema validation, type-safe access, runtime overrides,
+  hot-reload hook. Integrated into Kernel and Event Bus via new optional
+  parameters (zero breaking changes). 27 tests. See
+  `docs/adr/0003-v0.2-configuration-manager.md`.
 
-# S.E.N.T.I.N.E.L.
-
-Smart Executive Neural Technology for Intelligent Navigation, Evaluation & Learning
-
-## Overview
-
-S.E.N.T.I.N.E.L. is a modular AI Operating System designed as a long-term engineering project.
-
-## Current Version
-
-v0.1.0 – Kernel Foundation
-
-## Features
-
-- Modular Kernel
-- Event Bus
-- Security Manager
-- Module Registry
-- Audit Logging
-- Unit Tests
-
-## Roadmap
-
-- v0.2 Configuration Manager
-- v0.3 Plugin Loader
-- v0.4 Memory Engine
-- v0.5 Voice Interface
-- ...
+## Next up (v0.3, awaiting approval)
+Not yet scoped — per project workflow, stopping here for review.

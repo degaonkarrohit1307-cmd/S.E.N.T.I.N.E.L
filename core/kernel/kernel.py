@@ -12,13 +12,16 @@ point of the registry pattern. main.py decides what to load.
 from __future__ import annotations
 
 import logging
+from typing import TYPE_CHECKING
 
-from core.config_manager.src.config_manager import ConfigurationManager
 from core.event_bus.event_bus import AsyncEventBus
 from core.module_registry.registry import ModuleRegistry
 from domain.entities.event import Event
 from domain.ports.module_port import KernelContext
 from domain.ports.system_ports import SecurityPort
+
+if TYPE_CHECKING:
+    from core.config_manager.src.config_manager import ConfigurationManager
 
 logger = logging.getLogger("sentinel.kernel")
 
@@ -36,62 +39,34 @@ class _KernelContextImpl(KernelContext):
 
 
 class Kernel:
-    def __init__(
-        self,
-        security: SecurityPort,
-        config: ConfigurationManager | None = None,
-    ) -> None:
+    def __init__(self, security: SecurityPort, config: "ConfigurationManager | None" = None) -> None:
         """
-        Kernel boot sequence.
-
-        Boot order:
-            1. Event Bus
-            2. Security Manager
-            3. Kernel Context
-            4. Module Registry
+        `config` is optional and defaults to None so existing callers
+        (`Kernel(security=...)`) keep working unchanged (v0.2 addition).
+        When provided, `event_bus.queue_size` is read from it; otherwise
+        the Event Bus falls back to its own hardcoded default -- exactly
+        as it did before this version existed.
         """
-        self.security = security
         self.config = config
-
-        # Read queue size from configuration
-        queue_size = 1000
-        if self.config is not None:
-            queue_size = self.config.get_int(
-                "event_bus.queue_size",
-                1000,
-            )
-
-        # Core services
-        self.event_bus = AsyncEventBus(queue_size=queue_size)
-        self.context = _KernelContextImpl(
-            self.event_bus,
-            self.security,
+        queue_size = (
+            config.get_int("event_bus.queue_size", 1000) if config is not None else 1000
         )
-        self.registry = ModuleRegistry(
-            self.security,
-            self.context,
-        )
+        self.event_bus = AsyncEventBus(normal_queue_maxsize=queue_size)
+        self.security = security
+        self.context = _KernelContextImpl(self.event_bus, self.security)
+        self.registry = ModuleRegistry(self.security, self.context)
 
     async def start(self) -> None:
         logger.info("kernel starting")
-
         await self.event_bus.start()
-
         await self.event_bus.publish(
-            Event(
-                type="system.kernel.started",
-                source="core",
-            )
+            Event(type="system.kernel.started", source="core")
         )
-
         logger.info("kernel started")
 
     async def stop(self) -> None:
         logger.info("kernel stopping")
-
         for module_id in list(self.registry.all_manifests().keys()):
             await self.registry.unload(module_id)
-
         await self.event_bus.stop()
-
         logger.info("kernel stopped")

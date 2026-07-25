@@ -3,5 +3,5 @@
   "version": "0.1.0",
   "capabilities": ["echo"],
   "required_scopes": ["demo.echo"],
-  "dependencies": []
+  "dependencies": ["security_manager"]
 }
