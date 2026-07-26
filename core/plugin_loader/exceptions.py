@@ -89,3 +89,20 @@ class CircularDependencyError(PluginDependencyError):
     or more plugins (e.g. A depends on B, B depends on A), detected via
     Kahn's Algorithm: if any nodes remain unprocessed after the
     algorithm terminates, those nodes form (or are part of) a cycle."""
+
+
+class PluginReloadError(PluginError):
+    """Raised when reload_plugin() fails, wrapping the underlying
+    unload/load failure so callers see one consistent exception type
+    for 'reload did not succeed', regardless of which phase failed."""
+
+
+class PluginUnloadDeniedError(PluginError):
+    """Raised when unload_plugin() is attempted on a plugin that
+    another currently loaded plugin still depends on."""
+
+
+class PluginNotRunningError(PluginError):
+    """Raised when unload_plugin() or reload_plugin() is attempted on a
+    plugin name that is not currently loaded/registered with the
+    PluginLoader's runtime registry."""
