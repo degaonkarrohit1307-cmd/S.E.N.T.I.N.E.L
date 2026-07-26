@@ -1,20 +1,21 @@
 """
-PluginLoader -- Phase 1: discovery only.
+PluginLoader -- discovery, plus (as of v0.3.3) dependency-ordered
+discovery.
 
-Responsibilities in this phase:
+Responsibilities:
     - recursively scan a root directory for manifest.json files
     - parse each one into a PluginManifest
     - skip anything invalid (bad JSON, missing required fields, or no
       manifest.json present at all) gracefully, with a logged reason,
       rather than aborting the whole scan
-    - return the list of successfully discovered plugins
+    - return the list of successfully discovered plugins, either in raw
+      path-sorted order (discover()) or in a safe dependency-resolved
+      load order (discover_in_dependency_order(), v0.3.3)
 
-Explicitly NOT in this phase (later phases):
-    - dependency resolution / cycle detection
-    - permission whitelist validation
-    - duplicate-name detection
+Explicitly NOT in this class's responsibility (later phases):
     - dynamic import of plugin code
-    - lifecycle (initialize/start/stop/shutdown)
+    - lifecycle (initialize/start/stop/shutdown) -- see
+      core/plugin_loader/plugin_lifecycle.py
     - enable/disable/reload
 
 Coexistence with the existing Module Registry (v0.1): that system's
@@ -28,6 +29,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
+from core.plugin_loader.dependency_resolver import DependencyResolver
 from core.plugin_loader.exceptions import PluginManifestError
 from core.plugin_loader.plugin_manifest import PluginManifest
 
@@ -38,10 +40,11 @@ MANIFEST_FILENAME = "manifest.json"
 
 class PluginLoader:
     """
-    Stateless discovery. Holds no record of "loaded" or "enabled"
-    plugins -- that lifecycle bookkeeping belongs to a future
-    PluginManager (Single Responsibility: discovering/parsing manifests
-    is a distinct concern from tracking runtime state).
+    Discovery, plus dependency-ordered discovery. Holds no record of
+    "loaded" or "enabled" plugins -- that lifecycle bookkeeping belongs
+    to PluginLifecycleManager (Single Responsibility: discovering/
+    parsing/ordering manifests is a distinct concern from tracking
+    runtime lifecycle state).
     """
 
     def __init__(self, plugin_root: Path) -> None:
@@ -95,6 +98,32 @@ class PluginLoader:
             len(manifest_paths),
         )
         return discovered
+
+    def discover_in_dependency_order(self) -> list[PluginManifest]:
+        """
+        Discover plugins exactly as discover() does, then reorder the
+        result using DependencyResolver so plugins come back in a safe
+        load order (every plugin appears after all of its
+        dependencies) instead of discover()'s raw path-sorted order.
+
+        This is purely additive: discover() itself is completely
+        unchanged, so every existing caller and test that depends on
+        its current path-sorted, error-tolerant behavior is unaffected.
+
+        Raises whatever DependencyResolver.resolve() raises --
+        DuplicatePluginError, InvalidDependencyError,
+        MissingDependencyError, or CircularDependencyError -- if the
+        discovered set of manifests has an invalid dependency graph.
+        Unlike discover(), which tolerates a single bad manifest by
+        skipping it, an invalid *dependency graph* spans multiple
+        plugins at once and cannot be silently partially resolved, so
+        it is surfaced to the caller rather than swallowed.
+        """
+        manifests = self.discover()
+        resolver = DependencyResolver()
+        order = resolver.resolve(manifests)
+        manifests_by_name = {manifest.name: manifest for manifest in manifests}
+        return [manifests_by_name[name] for name in order]
 
     def _try_parse(self, manifest_path: Path) -> PluginManifest | None:
         try:
